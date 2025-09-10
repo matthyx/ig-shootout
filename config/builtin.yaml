@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: builtin
-          image: ko://./builtin
+          image: ko://github.com/matthyx/ig-shootout/builtin
           securityContext:
             readOnlyRootFilesystem: true
             # With hostPID/hostNetwork/privileged [1] set to false, we need to set appropriate

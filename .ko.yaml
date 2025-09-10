@@ -1,1 +1,9 @@
 defaultBaseImage: gcr.io/distroless/static-debian12:latest
+
+builds:
+  - id: builtin
+    dir: ./builtin
+    main: .
+  - id: imagebased
+    dir: ./imagebased
+    main: .

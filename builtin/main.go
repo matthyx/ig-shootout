@@ -8,8 +8,8 @@ import (
 
 	gadgetcontext "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-context"
 	gadgetregistry "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-registry"
-	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/tracer"
-	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/types"
+	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/dns/tracer"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/dns/types"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/logger"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/params"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/runtime/local"
@@ -22,11 +22,11 @@ func do() error {
 	}
 	defer runtime.Close()
 
-	gadgetDesc := gadgetregistry.Get("trace", "open")
+	gadgetDesc := gadgetregistry.Get("trace", "dns")
 	parser := gadgetDesc.Parser()
 	parser.SetEventCallback(func(ev any) {
 		event := ev.(*types.Event)
-		fmt.Printf("command %s (%d) opened %s\n", event.Comm, event.Pid, event.Path)
+		fmt.Printf("command %s (%d) resolved %s\n", event.Comm, event.Pid, event.DNSName)
 	})
 
 	gadgetCtx := gadgetcontext.NewBuiltIn(
