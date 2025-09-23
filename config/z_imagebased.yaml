@@ -12,9 +12,17 @@ spec:
       labels:
         app: imagebased
     spec:
+      serviceAccountName: ig-shootout
       containers:
         - name: imagebased
           image: ko://./imagebased
+          env:
+            - name: HOST_ROOT
+              value: "/host"
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           securityContext:
             readOnlyRootFilesystem: true
             # With hostPID/hostNetwork/privileged [1] set to false, we need to set appropriate

@@ -20,9 +20,12 @@ import (
 	"os"
 
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/datasource"
+	igjson "github.com/inspektor-gadget/inspektor-gadget/pkg/datasource/formatters/json"
 	gadgetcontext "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-context"
+	apihelpers "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-service/api-helpers"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators"
 	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/ebpf"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators/kubemanager"
 	ocihandler "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/oci-handler"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators/simple"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/runtime/local"
@@ -33,17 +36,10 @@ func do() error {
 	myOperator := simple.New("myOperator",
 		simple.OnInit(func(gadgetCtx operators.GadgetContext) error {
 			for _, d := range gadgetCtx.GetDataSources() {
-				// Access some specific fields
-				pidF := d.GetField("proc.pid")
-				commF := d.GetField("proc.comm")
-				fnameF := d.GetField("fname")
-
+				jsonFormatter, _ := igjson.New(d, igjson.WithShowAll(true), igjson.WithPretty(true, "  "))
 				d.Subscribe(func(source datasource.DataSource, data datasource.Data) error {
-					// Error handling is omitted for brevity
-					pid, _ := pidF.Uint32(data)
-					comm, _ := commF.String(data)
-					fname, _ := fnameF.String(data)
-					fmt.Printf("command %s (%d) opened %s\n", comm, pid, fname)
+					jsonOutput := jsonFormatter.Marshal(data)
+					fmt.Printf("%s\n", jsonOutput)
 					return nil
 				}, opPriority)
 			}
@@ -51,10 +47,20 @@ func do() error {
 		}),
 	)
 
+	param := apihelpers.ToParamDescs(kubemanager.KubeManagerOperator.GlobalParams()).ToParams()
+	param.Set(kubemanager.ParamHookMode, "fanotify+ebpf")
+	if err := kubemanager.KubeManagerOperator.Init(param); err != nil {
+		return fmt.Errorf("initializing kube-manager operator: %w", err)
+	}
+
 	gadgetCtx := gadgetcontext.New(
 		context.Background(),
 		"ghcr.io/inspektor-gadget/gadget/trace_open:main",
-		gadgetcontext.WithDataOperators(ocihandler.OciHandler, myOperator),
+		gadgetcontext.WithDataOperators(
+			kubemanager.KubeManagerOperator,
+			ocihandler.OciHandler,
+			myOperator,
+		),
 	)
 
 	runtime := local.New()
