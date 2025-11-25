@@ -12,9 +12,10 @@ spec:
       labels:
         app: imagebased
     spec:
+      serviceAccountName: imagebased
       containers:
         - name: imagebased
-          image: ko://./imagebased
+          image: ko://github.com/matthyx/ig-shootout/imagebased
           securityContext:
             readOnlyRootFilesystem: true
             # With hostPID/hostNetwork/privileged [1] set to false, we need to set appropriate
@@ -76,6 +77,12 @@ spec:
                 # Needed to attach qdiscs and filters to network interfaces. See createClsActQdisc()
                 # and addTCFilter() in pkg/gadgets/internal/tcnetworktracer/tc.go
                 - NET_ADMIN
+          env:
+            # NODE_NAME is required by kubemanager to identify the node
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           volumeMounts:
             - mountPath: /host/bin
               name: bin

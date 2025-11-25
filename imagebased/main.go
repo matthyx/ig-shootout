@@ -20,41 +20,68 @@ import (
 	"os"
 
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/datasource"
+	igjson "github.com/inspektor-gadget/inspektor-gadget/pkg/datasource/formatters/json"
 	gadgetcontext "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-context"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators"
 	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/ebpf"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators/kubemanager"
 	ocihandler "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/oci-handler"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators/simple"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators/socketenricher"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/runtime/local"
 )
 
 func do() error {
 	const opPriority = 50000
-	myOperator := simple.New("myOperator",
-		simple.OnInit(func(gadgetCtx operators.GadgetContext) error {
-			for _, d := range gadgetCtx.GetDataSources() {
-				// Access some specific fields
-				pidF := d.GetField("proc.pid")
-				commF := d.GetField("proc.comm")
-				fnameF := d.GetField("fname")
+	myOperator := simple.New("myHandler", simple.OnInit(func(gadgetCtx operators.GadgetContext) error {
+		for _, d := range gadgetCtx.GetDataSources() {
+			jsonFormatter, _ := igjson.New(d,
+				// Show all fields
+				igjson.WithShowAll(true),
 
-				d.Subscribe(func(source datasource.DataSource, data datasource.Data) error {
-					// Error handling is omitted for brevity
-					pid, _ := pidF.Uint32(data)
-					comm, _ := commF.String(data)
-					fname, _ := fnameF.String(data)
-					fmt.Printf("command %s (%d) opened %s\n", comm, pid, fname)
-					return nil
-				}, opPriority)
-			}
-			return nil
-		}),
-	)
+				// Print json in a pretty format
+				igjson.WithPretty(true, "  "),
+			)
+
+			d.Subscribe(func(source datasource.DataSource, data datasource.Data) error {
+				jsonOutput := jsonFormatter.Marshal(data)
+				fmt.Printf("%s\n", jsonOutput)
+				return nil
+			}, opPriority)
+		}
+		return nil
+	}))
+
+	// There are some gadgets, like trace_dns, trace_sni, trace_network that
+	// require the kube manager operator to work when running in Kubernetes.
+
+	// Create the kube manager operator for Kubernetes environments.
+	// It automatically detects containers and enriches events with K8s metadata.
+	kubeManagerOp := kubemanager.KubeManagerOperator
+	kubeManagerParams := kubeManagerOp.GlobalParamDescs().ToParams()
+	if err := kubeManagerOp.Init(kubeManagerParams); err != nil {
+		return fmt.Errorf("init kube manager: %w", err)
+	}
+	defer kubeManagerOp.Close()
+
+	// The socket enricher operator is used to provide information about the
+	// process performing the DNS query.
+	socketEnricherOp := &socketenricher.SocketEnricher{}
+	socketEnricherParams := socketEnricherOp.GlobalParamDescs().ToParams()
+	if err := socketEnricherOp.Init(socketEnricherParams); err != nil {
+		return fmt.Errorf("init socket enricher: %w", err)
+	}
+	defer socketEnricherOp.Close()
 
 	gadgetCtx := gadgetcontext.New(
 		context.Background(),
-		"ghcr.io/inspektor-gadget/gadget/trace_open:main",
-		gadgetcontext.WithDataOperators(ocihandler.OciHandler, myOperator),
+		"ghcr.io/inspektor-gadget/gadget/trace_dns:v0.46.0",
+		gadgetcontext.WithDataOperators(
+			ocihandler.OciHandler,
+			kubeManagerOp,
+			socketEnricherOp,
+			myOperator,
+		),
 	)
 
 	runtime := local.New()
